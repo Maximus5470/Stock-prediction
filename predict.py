@@ -1,19 +1,3 @@
-# ============================================================
-# predict.py  —  RUN THIS ANYTIME FOR INSTANT PREDICTIONS
-#
-# Prerequisites: run train.py at least once first.
-# No retraining — loads saved models and predicts in ~5 seconds.
-#
-# The user can enter ANY duration:
-#   5       → 5 days   → SHORT tier
-#   30      → 1 month  → SHORT tier
-#   90      → 3 months → MEDIUM tier
-#   180     → 6 months → MEDIUM tier
-#   365     → 1 year   → MEDIUM tier
-#   730     → 2 years  → LONG tier
-#   1825    → 5 years  → LONG tier
-# ============================================================
-
 from stock_pipeline import get_market_context, predict, get_tier, TIER_CONFIG
 
 
@@ -21,16 +5,13 @@ def get_user_inputs() -> tuple:
     """Interactive prompt to get ticker and duration from user."""
 
     print("\n" + "=" * 55)
-    print("  📈 Indian Stock Market Predictor")
+    print("Indian Stock Market Predictor")
     print("=" * 55)
-
-    # ── Ticker ──────────────────────────────────────────────
     print("\nEnter NSE ticker (e.g. RELIANCE, TCS, HDFCBANK)")
     print("The '.NS' suffix will be added automatically.")
     raw = input("  Ticker: ").strip().upper()
     ticker = raw if raw.endswith(".NS") or raw.endswith(".BO") else raw + ".NS"
 
-    # ── Duration ─────────────────────────────────────────────
     print("\nHow far ahead do you want to predict?")
     print("  Examples:")
     print("    7        →  1 week        (SHORT tier)")
@@ -45,19 +26,18 @@ def get_user_inputs() -> tuple:
         try:
             days = int(input("\n  Number of days: ").strip())
             if days < 1:
-                print("  ⚠️  Please enter a positive number.")
+                print("  [WARN]  Please enter a positive number.")
                 continue
             if days > 1825:
-                print("  ⚠️  Maximum supported horizon is 1825 days (5 years).")
+                print("  [WARN]  Maximum supported horizon is 1825 days (5 years).")
                 continue
             break
         except ValueError:
-            print("  ⚠️  Please enter a whole number.")
+            print("  [WARN]  Please enter a whole number.")
 
-    # Show which tier will be used
     tier = get_tier(days)
     cfg  = TIER_CONFIG[tier]
-    print(f"\n  ✅ Using: {cfg['label']}")
+    print(f"\n  [OK] Using: {cfg['label']}")
 
     return ticker, days
 
@@ -68,17 +48,13 @@ def run_batch(predictions: list, context):
         try:
             predict(ticker, days, context)
         except FileNotFoundError as e:
-            print(f"\n❌ {e}")
+            print(f"\n[ERROR] {e}")
         except Exception as e:
-            print(f"\n⚠️  Could not predict {ticker}: {e}")
+            print(f"\n[WARN]  Could not predict {ticker}: {e}")
 
-
-# ── Main ───────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-
-    # Fetch market context once (shared across all predictions)
-    print("\n📥 Fetching market context data...")
+    print("\nFetching market context data...")
     context = get_market_context(period="2y")
 
     while True:
@@ -86,12 +62,12 @@ if __name__ == "__main__":
             ticker, days = get_user_inputs()
             predict(ticker, days, context)
         except FileNotFoundError as e:
-            print(f"\n❌ {e}")
+            print(f"\n[ERROR] {e}")
         except Exception as e:
-            print(f"\n⚠️  Error: {e}")
+            print(f"\n[WARN]  Error: {e}")
 
         print("\n" + "-" * 55)
         again = input("  Predict another stock? (y/n): ").strip().lower()
         if again != "y":
-            print("\n👋 Goodbye!\n")
+            print("\n[OK] Goodbye!\n")
             break

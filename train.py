@@ -1,27 +1,3 @@
-# ============================================================
-# train.py  —  RUN THIS ONCE (or weekly) TO TRAIN ALL TIERS
-#
-# Imports from stock_pipeline.py (must be in the same folder).
-#
-# Trains 3 separate model sets:
-#   SHORT  — 7-day  horizon, technical indicators
-#   MEDIUM — 60-day horizon, trend + momentum
-#   LONG   — 365-day horizon, long-term patterns
-#
-# Each tier trains 4 models and saves to ./models/:
-#   future_high  → upper bound of safe range
-#   future_low   → lower bound of safe range
-#   risk_level   → LOW / MEDIUM / HIGH
-#   signal       → BUY / HOLD / SELL
-#
-# Runtime: ~10–20 minutes for all 3 tiers combined.
-# After this, use predict.py for instant predictions.
-# ============================================================
-
-import importlib
-import stock_pipeline
-importlib.reload(stock_pipeline)          # ensures latest code is loaded
-
 from stock_pipeline import (
     get_market_context,
     build_feature_set,
