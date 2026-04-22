@@ -55,7 +55,7 @@ def _fix_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_stock_data(ticker: str, period: str = "5y") -> pd.DataFrame:
     """Download OHLCV data. Always fetches up to today."""
-    print(f"  📥 {ticker}...")
+    print(f"  [FETCH] {ticker}...")
     days_map = {
         "1y": 365, "2y": 730,  "3y": 1095,
         "5y": 1825,"10y":3650, "15y":5475
@@ -71,7 +71,9 @@ def get_stock_data(ticker: str, period: str = "5y") -> pd.DataFrame:
     df = _fix_df(df)
     df = df[["Open","High","Low","Close","Volume"]].copy()
     df.dropna(inplace=True)
-    print(f"     ✅ {len(df)} rows | Latest: {df.index[-1].date()} | ₹{df['Close'].iloc[-1]:.2f}")
+    if df.empty:
+        raise ValueError(f"No data returned (possibly delisted or no timezone found)")
+    print(f"     [OK] {len(df)} rows | Latest: {df.index[-1].date()} | ₹{df['Close'].iloc[-1]:.2f}")
     return df
 
 
@@ -87,7 +89,7 @@ def get_latest_price(ticker: str) -> tuple:
 
 def get_market_context(period: str = "5y") -> pd.DataFrame:
     """Pull India macro/market context data."""
-    print("📥 Downloading market context...")
+    print("[DATA] Downloading market context...")
     symbols = {
         "nifty":    "^NSEI",
         "sensex":   "^BSESN",
@@ -106,9 +108,9 @@ def get_market_context(period: str = "5y") -> pd.DataFrame:
                 s.index = s.index.tz_localize(None)
             s.name = name
             ctx = pd.concat([ctx, s], axis=1)
-            print(f"   ✅ {name}")
+            print(f"   [OK] {name}")
         except Exception as e:
-            print(f"   ⚠️  {name}: {e}")
+            print(f"   [WARN] {name}: {e}")
     ctx.dropna(how="all", inplace=True)
     return ctx
 
@@ -119,7 +121,7 @@ def add_price_features(df):
     o = df["Open"].squeeze()
     h = df["High"].squeeze()
     l = df["Low"].squeeze()
-    df["daily_return"] = c.pct_change()
+    df["daily_return"] = c.pct_change(fill_method=None)
     df["log_return"]   = np.log(c / c.shift(1))
     df["price_range"]  = h - l
     df["gap"]          = o - c.shift(1)
@@ -155,7 +157,7 @@ def add_momentum(df):
     df["macd_sig"]  = df["macd"].ewm(span=9, adjust=False).mean()
     df["macd_hist"] = df["macd"] - df["macd_sig"]
     df["macd_cross"]= (df["macd"] > df["macd_sig"]).astype(int)
-    df["roc_10"]    = c.pct_change(10) * 100
+    df["roc_10"]    = c.pct_change(10, fill_method=None) * 100
     lo14 = l.rolling(14).min()
     hi14 = h.rolling(14).max()
     df["stoch_k"]   = 100 * (c - lo14) / (hi14 - lo14 + 1e-9)
@@ -178,8 +180,8 @@ def add_volatility(df):
     tr          = pd.concat([h-l,(h-pc).abs(),(l-pc).abs()],axis=1).max(axis=1)
     df["atr14"] = tr.rolling(14).mean()
     df["atr_pct"]= df["atr14"] / c
-    df["vol10"] = c.pct_change().rolling(10).std()
-    df["vol20"] = c.pct_change().rolling(20).std()
+    df["vol10"] = c.pct_change(fill_method=None).rolling(10).std()
+    df["vol20"] = c.pct_change(fill_method=None).rolling(20).std()
     df["hl_pct"]= (h - l) / c
     return df
 
@@ -199,7 +201,7 @@ def add_volume_features(df):
 
 
 def add_context_features(df, ctx):
-    r = ctx.pct_change()
+    r = ctx.pct_change(fill_method=None)
     r.columns = [f"{c}_ret" for c in r.columns]
     df = df.join(r, how="left")
     if "indiavix" in ctx.columns:
@@ -245,9 +247,9 @@ def add_medium_features(df):
     for p in [100, 150]:
         df[f"sma_{p}"]         = c.rolling(p).mean()
         df[f"price_vs_sma{p}"] = c / df[f"sma_{p}"]
-    df["ret_1m"]     = c.pct_change(20)
-    df["ret_3m"]     = c.pct_change(60)
-    df["ret_6m"]     = c.pct_change(120)
+    df["ret_1m"]     = c.pct_change(20, fill_method=None)
+    df["ret_3m"]     = c.pct_change(60, fill_method=None)
+    df["ret_6m"]     = c.pct_change(120, fill_method=None)
     df["vol_regime"] = (df["vol20"] > df["vol20"].rolling(60).mean()).astype(int)
     h = df["High"].squeeze()
     l = df["Low"].squeeze()
@@ -262,10 +264,10 @@ def add_long_features(df):
     for p in [250, 500]:
         df[f"sma_{p}"]         = c.rolling(p).mean()
         df[f"price_vs_sma{p}"] = c / df[f"sma_{p}"]
-    df["ret_6m"]       = c.pct_change(120)
-    df["ret_1y"]       = c.pct_change(250)
-    df["ret_2y"]       = c.pct_change(500)
-    df["vol_1y"]       = c.pct_change().rolling(250).std()
+    df["ret_6m"]       = c.pct_change(120, fill_method=None)
+    df["ret_1y"]       = c.pct_change(250, fill_method=None)
+    df["ret_2y"]       = c.pct_change(500, fill_method=None)
+    df["vol_1y"]       = c.pct_change(fill_method=None).rolling(250).std()
     df["vol_rat_long"] = df["vol20"] / (df["vol_1y"] + 1e-9)
     df["pos_52w_hi"]   = c / c.rolling(250).max()
     df["pos_52w_lo"]   = c / c.rolling(250).min()
@@ -341,7 +343,7 @@ def _train_regressor(X, y, label):
         mae = mean_absolute_error(y.iloc[val], m.predict(X.iloc[val]))
         maes.append(mae); mdls.append(m)
         print(f"   Fold {fold+1} | {label} | MAE: ₹{mae:.2f}")
-    print(f"   ✅ Avg MAE: ₹{np.mean(maes):.2f}")
+    print(f"   [OK] Avg MAE: ₹{np.mean(maes):.2f}")
     return {"model": mdls[-1], "avg_mae": float(np.mean(maes))}
 
 
@@ -355,7 +357,7 @@ def _safe_classification_report(y_true, y_pred, le):
     # Warn if any class is completely absent
     missing = [c for c in le.classes_ if c not in present_names]
     if missing:
-        print(f"   ℹ️  Note: {missing} absent from last val fold "
+        print(f"   [NOTE] {missing} absent from last val fold "
               f"(normal for rare classes in LONG tier)")
 
     print(classification_report(
@@ -379,7 +381,7 @@ def _train_classifier(X, y_raw, label):
     for cls, cnt in dist.items():
         pct = cnt / len(y) * 100
         if pct < 5:
-            print(f"   ⚠️  '{cls}' only {cnt} samples ({pct:.1f}%) "
+            print(f"   [WARN] '{cls}' only {cnt} samples ({pct:.1f}%) "
                   f"— may vanish from some validation folds")
 
     tscv = TimeSeriesSplit(n_splits=5)
@@ -391,7 +393,7 @@ def _train_classifier(X, y_raw, label):
 
         # XGBoost needs at least 2 classes in the training split
         if len(np.unique(y_tr)) < 2:
-            print(f"   Fold {fold+1} | {label} | ⚠️  Skipped (only 1 class in train)")
+            print(f"   Fold {fold+1} | {label} | [SKIP] Skipped (only 1 class in train)")
             continue
 
         m = xgb.XGBClassifier(
@@ -417,7 +419,7 @@ def _train_classifier(X, y_raw, label):
 
     best    = mdls[-1]
     avg_acc = float(np.mean(scores))
-    print(f"   ✅ Avg Accuracy: {avg_acc*100:.1f}%")
+    print(f"   [OK] Avg Accuracy: {avg_acc*100:.1f}%")
 
     # Print report using only classes present in the last validation fold
     val_idx = list(tscv.split(X))[-1][1]
@@ -426,20 +428,49 @@ def _train_classifier(X, y_raw, label):
     return {"model": best, "encoder": le, "avg_accuracy": avg_acc}
 
 
+def _sanitize_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove rows with inf/nan/extreme outliers in targets or features."""
+    df = df.replace([np.inf, -np.inf], np.nan)
+
+    # Drop rows where targets are NaN
+    target_cols = ["future_high", "future_low", "future_return", "risk_level", "signal"]
+    available_targets = [c for c in target_cols if c in df.columns]
+    df = df.dropna(subset=available_targets)
+
+    # Remove extreme outliers in future_high/future_low (>5 std from mean)
+    if "future_high" in df.columns:
+        mean_h, std_h = df["future_high"].mean(), df["future_high"].std()
+        df = df[(df["future_high"] - mean_h).abs() <= 5 * std_h]
+
+    if "future_low" in df.columns:
+        mean_l, std_l = df["future_low"].mean(), df["future_low"].std()
+        df = df[(df["future_low"] - mean_l).abs() <= 5 * std_l]
+
+    # Final NaN check after all filtering
+    df = df.dropna()
+    return df
+
+
 def train_all_models(df, tier):
+    # Sanitize data before training
+    df = _sanitize_data(df)
+
+    if df.empty:
+        raise ValueError(f"[{tier}] Dataset empty after sanitization - check for inf/nan values")
+
     fc = get_feature_columns(df)
     X  = df[fc]
 
-    print(f"\n🏋️  [{tier.upper()}] Training future HIGH regressor...")
+    print(f"\n[TRAIN] [{tier.upper()}] Training future HIGH regressor...")
     high_m = _train_regressor(X, df["future_high"], "future_high")
 
-    print(f"\n🏋️  [{tier.upper()}] Training future LOW regressor...")
+    print(f"\n[TRAIN] [{tier.upper()}] Training future LOW regressor...")
     low_m  = _train_regressor(X, df["future_low"],  "future_low")
 
-    print(f"\n🏋️  [{tier.upper()}] Training RISK LEVEL classifier...")
+    print(f"\n[TRAIN] [{tier.upper()}] Training RISK LEVEL classifier...")
     risk_m = _train_classifier(X, df["risk_level"], "risk_level")
 
-    print(f"\n🏋️  [{tier.upper()}] Training BUY/HOLD/SELL classifier...")
+    print(f"\n[TRAIN] [{tier.upper()}] Training BUY/HOLD/SELL classifier...")
     sig_m  = _train_classifier(X, df["signal"], "signal")
 
     return {
@@ -455,7 +486,7 @@ def get_feature_importance(models, feature_cols, top_n=15):
         models["future_high"]["model"].feature_importances_,
         index=feature_cols
     ).sort_values(ascending=False).head(top_n)
-    print(f"\n🔍 Top {top_n} Features:")
+    print(f"\n[FEATURES] Top {top_n} Features:")
     for feat, score in imp.items():
         bar = "█" * int(score * 200)
         print(f"   {feat:<32} {bar} {score:.4f}")
@@ -473,7 +504,7 @@ def save_models(tier, models, path="./models"):
     joblib.dump(models["risk"]["encoder"],        f"{p}_risk_enc.pkl")
     joblib.dump(models["signal"]["model"],        f"{p}_signal_model.pkl")
     joblib.dump(models["signal"]["encoder"],      f"{p}_signal_enc.pkl")
-    print(f"   💾 [{tier}] models saved → {path}/")
+    print(f"   [SAVED] [{tier}] models saved -> {path}/")
 
 
 def load_models(tier, path="./models"):
@@ -583,12 +614,12 @@ def predict(ticker, days, ctx, model_path="./models"):
 ║                                                          ║
 ║  Upper Bound   : ₹{pred_high:<38.2f}║
 ║  Lower Bound   : ₹{pred_low:<38.2f}║
-║  Est. Error    : ±₹{mae_h:.2f} / ±₹{mae_l:.2f}                  ║
+║  Est. Error    : +/-₹{mae_h:.2f} / +/-₹{mae_l:.2f}                  ║
 ╠══════════════════════════════════════════════════════════╣
 ║  {se}  Signal      : {sig_lbl:<27}  ({sig_conf:.0f}% conf) ║
 ║  {re}  Risk Level  : {risk_lbl:<27}  ({risk_conf:.0f}% conf) ║
 ╠══════════════════════════════════════════════════════════╣
-║  🔍 Key Indicators                                       ║
+║  [INFO] Key Indicators                                   ║
 ║  RSI           : {rsi:<39.1f}║
 ║  MACD Hist     : {macd_hist:<39.4f}║
 ║  Bollinger Pos : {bb_pos:<39.2f}║
@@ -597,12 +628,12 @@ def predict(ticker, days, ctx, model_path="./models"):
 ╚══════════════════════════════════════════════════════════╝""")
 
     notes = []
-    if rsi < 35:         notes.append("⚠️  RSI oversold — potential bounce zone")
-    elif rsi > 65:       notes.append("⚠️  RSI overbought — potential pullback")
-    if macd_hist > 0:    notes.append("✅ MACD bullish momentum")
+    if rsi < 35:         notes.append("[WARN] RSI oversold - potential bounce zone")
+    elif rsi > 65:       notes.append("[WARN] RSI overbought - potential pullback")
+    if macd_hist > 0:    notes.append("[OK] MACD bullish momentum")
     else:                notes.append("🔻 MACD bearish momentum")
-    if bb_pos < 0.2:     notes.append("✅ Near Bollinger lower band — potential support")
-    elif bb_pos > 0.8:   notes.append("⚠️  Near Bollinger upper band — potential resistance")
+    if bb_pos < 0.2:     notes.append("[OK] Near Bollinger lower band - potential support")
+    elif bb_pos > 0.8:   notes.append("[WARN] Near Bollinger upper band - potential resistance")
     if vol_ratio > 1.5:  notes.append("📢 Above-average volume — strong move")
     if risk_lbl=="HIGH": notes.append("🚨 HIGH RISK — consider smaller position size")
 

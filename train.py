@@ -79,13 +79,13 @@ TRAIN_TICKERS = [
     "TITAN.NS",
     "DMART.NS",         # Retail — steady compounder ← NEW
     "TRENT.NS",         # Tata retail — high growth mid ← NEW
-    "ZOMATO.NS",        # New-age, highly volatile ← NEW
+    "ETERNAL.NS",        # New-age, highly volatile ← NEW
     "NYKAA.NS",         # New listing, volatile ← NEW
  
     # ── LARGE CAP: Auto ─────────────────────────────────────────
     "MARUTI.NS",
     "M&M.NS",
-    "TATAMOTORS.NS",    # High volatility, JLR exposure ← NEW
+    "TMCV.NS",    # High volatility, JLR exposure ← NEW
     "BAJAJ-AUTO.NS",    # Premium auto — different cycle ← NEW
     "HEROMOTOCO.NS",    # Two-wheeler — defensive auto ← NEW
     "EICHERMOT.NS",     # Royal Enfield — premium niche ← NEW
@@ -147,21 +147,21 @@ for tier in TRAIN_TIERS:
     print(f"TIER : {cfg['label']}")
     print(f"{'='*60}")
 
-    print(f"\n📦 Building [{tier}] training dataset...")
+    print(f"\n[BUILD] Building [{tier}] training dataset...")
     all_data = []
     for ticker in TRAIN_TICKERS:
         try:
             df = build_feature_set(ticker, context, tier=tier)
             all_data.append(df)
         except Exception as e:
-            print(f"   ⚠️  Skipping {ticker}: {e}")
+            print(f"   [SKIP] Skipping {ticker}: {e}")
 
     if not all_data:
-        print(f"❌ No data collected for [{tier}] — skipping.")
+        print(f"[ERROR] No data collected for [{tier}] - skipping.")
         continue
 
     combined = pd.concat(all_data).dropna()
-    print(f"\n✅ [{tier}] dataset: {len(combined):,} rows "
+    print(f"\n[OK] [{tier}] dataset: {len(combined):,} rows "
           f"across {len(all_data)} stocks")
 
     models = train_all_models(combined, tier=tier)
@@ -171,6 +171,6 @@ for tier in TRAIN_TIERS:
 
 
 print("\n" + "=" * 60)
-print("🎉 Training complete!")
+print("[SUCCESS] Training complete!")
 print("   Run predict.py to get instant predictions.")
 print("=" * 60)
