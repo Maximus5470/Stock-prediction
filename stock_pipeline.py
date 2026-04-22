@@ -1,12 +1,3 @@
-# ============================================================
-# stock_pipeline.py  —  Complete rewrite
-# Indian Stock Market ML Pipeline
-# Tiers: SHORT (1-30d) | MEDIUM (31-365d) | LONG (366d+)
-# ============================================================
-
-import warnings
-warnings.filterwarnings("ignore")
-
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -19,11 +10,6 @@ from sklearn.metrics import (
 )
 import joblib
 import os
-
-
-# ============================================================
-# TIER CONFIGURATION
-# ============================================================
 
 def get_tier(days: int) -> str:
     if days <= 30:  return "short"
@@ -52,16 +38,11 @@ TIER_CONFIG = {
         "train_period": "15y",
         "data_period":  "5y",
         "horizon":      365,
-        # ±10% (not ±15%) so BUY/SELL classes have enough samples
         "buy_thresh":   0.10,
         "sell_thresh":  -0.10,
     },
 }
 
-
-# ============================================================
-# SECTION 1: DATA COLLECTION
-# ============================================================
 
 def _fix_df(df: pd.DataFrame) -> pd.DataFrame:
     """Flatten MultiIndex columns and strip timezone from index."""
@@ -132,10 +113,7 @@ def get_market_context(period: str = "5y") -> pd.DataFrame:
     return ctx
 
 
-# ============================================================
-# SECTION 2: FEATURE ENGINEERING
-# ============================================================
-
+# Feature Engineering
 def add_price_features(df):
     c = df["Close"].squeeze()
     o = df["Open"].squeeze()
@@ -347,10 +325,7 @@ def get_feature_columns(df):
     return [c for c in df.columns if c not in EXCLUDE]
 
 
-# ============================================================
-# SECTION 3: MODEL TRAINING
-# ============================================================
-
+# Training the Models
 def _train_regressor(X, y, label):
     tscv = TimeSeriesSplit(n_splits=5)
     maes, mdls = [], []
@@ -371,20 +346,6 @@ def _train_regressor(X, y, label):
 
 
 def _safe_classification_report(y_true, y_pred, le):
-    """
-    Print classification_report using ONLY the classes that
-    actually appear in y_true or y_pred for this fold.
-
-    ROOT CAUSE of the ValueError:
-      le.classes_ always has ALL classes (e.g. LOW/MEDIUM/HIGH).
-      But in the LONG tier, rare classes like HIGH volatility or SELL
-      may have zero samples in the most-recent validation fold
-      (recent market data tends to be calm / bullish).
-      Passing le.classes_ when only 2 classes are present causes:
-        "Number of classes, 2, does not match size of target_names, 3"
-
-    FIX: compute present_ints from actual data, not from le.classes_.
-    """
     # Which integer-encoded labels actually appear in this fold?
     present_ints  = sorted(set(y_true.tolist()) | set(y_pred.tolist()))
 
@@ -407,10 +368,6 @@ def _safe_classification_report(y_true, y_pred, le):
 
 
 def _train_classifier(X, y_raw, label):
-    """
-    Train XGBoost classifier with walk-forward validation.
-    Uses _safe_classification_report to handle rare/missing classes.
-    """
     le = LabelEncoder()
     # Fit on full data so integer encoding is consistent across folds
     y  = le.fit_transform(y_raw.astype(str))
@@ -470,7 +427,6 @@ def _train_classifier(X, y_raw, label):
 
 
 def train_all_models(df, tier):
-    """Train all 4 models for a given tier."""
     fc = get_feature_columns(df)
     X  = df[fc]
 
@@ -505,10 +461,6 @@ def get_feature_importance(models, feature_cols, top_n=15):
         print(f"   {feat:<32} {bar} {score:.4f}")
     return imp
 
-
-# ============================================================
-# SECTION 4: SAVE & LOAD MODELS
-# ============================================================
 
 def save_models(tier, models, path="./models"):
     os.makedirs(path, exist_ok=True)
@@ -549,11 +501,7 @@ def load_models(tier, path="./models"):
         },
     }
 
-
-# ============================================================
-# SECTION 5: PREDICTION
-# ============================================================
-
+# Prediction Pipeline
 def _dur_label(days):
     if days < 7:   return f"{days} day(s)"
     if days < 30:  return f"{days} days (~{days//7} week{'s' if days//7>1 else ''})"
